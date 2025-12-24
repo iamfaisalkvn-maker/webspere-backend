@@ -1,3 +1,4 @@
+
 from flask import Flask, request, jsonify
 import requests
 import os
@@ -5,6 +6,10 @@ import os
 app = Flask(__name__)
 
 PAGESPEED_API_KEY = os.environ.get("PAGESPEED_API_KEY")
+
+@app.route("/")
+def home():
+    return "Webspere SEO API is running"
 
 @app.route("/analyze", methods=["GET"])
 def analyze():
@@ -18,29 +23,34 @@ def analyze():
         f"?url={url}&strategy=mobile&key={PAGESPEED_API_KEY}"
     )
 
-    response = requests.get(api_url)
-    data = response.json()
-
     try:
-        lighthouse = data["lighthouseResult"]["categories"]
+        response = requests.get(api_url, timeout=30)
+        data = response.json()
+
+        # If Google returns an error
+        if "lighthouseResult" not in data:
+            return jsonify({
+                "error": "PageSpeed API error",
+                "details": data
+            }), 500
+
+        categories = data["lighthouseResult"]["categories"]
 
         result = {
-            "performance": lighthouse["performance"]["score"] * 100,
-            "seo": lighthouse["seo"]["score"] * 100,
-            "accessibility": lighthouse["accessibility"]["score"] * 100,
-            "best_practices": lighthouse["best-practices"]["score"] * 100
+            "performance": round(categories["performance"]["score"] * 100),
+            "seo": round(categories["seo"]["score"] * 100),
+            "accessibility": round(categories["accessibility"]["score"] * 100),
+            "best_practices": round(categories["best-practices"]["score"] * 100)
         }
 
         return jsonify(result)
 
-    except:
-        return jsonify({"error": "Unable to analyze site"}), 500
-
-
-@app.route("/")
-def home():
-    return "Webspere SEO API is running"
+    except Exception as e:
+        return jsonify({
+            "error": "Exception occurred",
+            "message": str(e)
+        }), 500
 
 
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=10000)
