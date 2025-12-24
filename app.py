@@ -6,30 +6,34 @@ import os
 app = Flask(__name__)
 CORS(app)
 
+HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    )
+}
+
 @app.route("/")
 def home():
     return "Webspere SEO Backend is running 🚀"
 
-@app.route("/health")
-def health():
-    return jsonify({"status": "ok"})
-
-@app.route("/analyze", methods=["GET"])
+@app.route("/analyze")
 def analyze():
     url = request.args.get("url")
 
     if not url:
-        return jsonify({"error": "URL parameter is required"}), 400
+        return jsonify({"error": "URL parameter missing"}), 400
 
     try:
-        response = requests.get(url, timeout=10)
+        response = requests.get(url, headers=HEADERS, timeout=15)
 
         load_time = response.elapsed.total_seconds()
 
         result = {
             "url": url,
             "status_code": response.status_code,
-            "performance": max(30, int(100 - load_time * 10)),
+            "performance": max(40, int(100 - load_time * 8)),
             "seo": 70,
             "accessibility": 65,
             "best_practices": 75
@@ -37,11 +41,10 @@ def analyze():
 
         return jsonify(result)
 
-    except Exception as e:
+    except requests.exceptions.RequestException:
         return jsonify({
-            "error": "Unable to analyze website",
-            "details": str(e)
-        }), 500
+            "error": "Website blocked automated analysis"
+        }), 403
 
 
 if __name__ == "__main__":
