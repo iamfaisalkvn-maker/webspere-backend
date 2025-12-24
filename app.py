@@ -1,12 +1,19 @@
 from flask import Flask, request, jsonify
 import requests
 import os
+import hmac
+import hashlib
 
 app = Flask(__name__)
 
+# ENV VARIABLES
 PAGESPEED_API_KEY = os.environ.get("PAGESPEED_API_KEY")
+RAZORPAY_SECRET = os.environ.get("RAZORPAY_KEY_SECRET")
 
 PAGESPEED_URL = "https://www.googleapis.com/pagespeedonline/v5/runPagespeed"
+
+# TEMP STORAGE (for demo – later DB)
+VALID_PAYMENTS = set()
 
 
 def fetch_pagespeed(url):
@@ -15,8 +22,7 @@ def fetch_pagespeed(url):
         "strategy": "mobile",
         "key": PAGESPEED_API_KEY
     }
-    response = requests.get(PAGESPEED_URL, params=params, timeout=30)
-    return response.json()
+    return requests.get(PAGESPEED_URL, params=params, timeout=30).json()
 
 
 def extract_scores(data):
@@ -38,7 +44,7 @@ def home():
     return "Webspere SEO API is running 🚀"
 
 
-# 🟢 FREE AUDIT (ONLY PERFORMANCE)
+# 🟢 FREE AUDIT
 @app.route("/analyze-free")
 def analyze_free():
     url = request.args.get("url")
@@ -54,12 +60,41 @@ def analyze_free():
     })
 
 
-# 🔵 PAID AUDIT (FULL DATA)
+# 🔔 RAZORPAY WEBHOOK
+@app.route("/razorpay-webhook", methods=["POST"])
+def razorpay_webhook():
+    payload = request.data
+    signature = request.headers.get("X-Razorpay-Signature")
+
+    expected_signature = hmac.new(
+        bytes(RAZORPAY_SECRET, "utf-8"),
+        payload,
+        hashlib.sha256
+    ).hexdigest()
+
+    if expected_signature != signature:
+        return jsonify({"error": "Invalid signature"}), 400
+
+    data = request.json
+    payment_id = data.get("payload", {}).get("payment", {}).get("entity", {}).get("id")
+
+    if payment_id:
+        VALID_PAYMENTS.add(payment_id)
+
+    return jsonify({"status": "payment verified"})
+
+
+# 🔵 PAID AUDIT (SECURED)
 @app.route("/analyze-paid")
 def analyze_paid():
     url = request.args.get("url")
-    if not url:
-        return jsonify({"error": "URL required"}), 400
+    payment_id = request.args.get("payment_id")
+
+    if not url or not payment_id:
+        return jsonify({"error": "URL and payment_id required"}), 400
+
+    if payment_id not in VALID_PAYMENTS:
+        return jsonify({"error": "Payment not verified"}), 403
 
     data = fetch_pagespeed(url)
     scores = extract_scores(data)
